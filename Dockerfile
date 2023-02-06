@@ -1,23 +1,11 @@
-FROM alpine:latest
+FROM python:3.7-slim
 
-ARG HE_URI="myhubitatdevice"
-ARG HE_ACCESS_TOKEN="my-access-token"
+RUN pip install requests prometheus_client
+WORKDIR /usr/src/app
 
-ENV HE_URI=$HE_URI
-ENV HE_ACCESS_TOKEN=$HE_ACCESS_TOKEN
+COPY hubitat_exporter /usr/local/bin/
+COPY hubitat_exporter.yml /usr/local/etc/
 
-RUN apk add --no-cache python3 py3-pip
+EXPOSE 9500
 
-RUN mkdir -p /app/config
-
-COPY requirements.txt /app/requirements.txt
-COPY app.py /app/app.py
-COPY templates /app/templates
-
-WORKDIR /app
-
-RUN /usr/bin/python3 -m pip install -r requirements.txt
-
-EXPOSE 5000
-
-CMD gunicorn -w 4 -b 0.0.0.0:5000 app:app
+ENTRYPOINT ["python", "-u", "/usr/local/bin/hubitat_exporter"]

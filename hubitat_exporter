@@ -1,0 +1,271 @@
+#!/usr/bin/env python3
+"""
+Prometheus exporter to fetch metrics from a Hubitat Hub via the Maker API.
+
+Requires Hubitat Maker token and URL.
+
+Expects to find them in hubitat_exporter.yml
+
+URL arguments:
+
+            Visit /hubitat to use.
+
+            Visit /metrics for metrics about this exporter.
+
+ """
+
+
+import argparse
+import os
+import socket
+import re
+import sys
+import time
+import traceback
+import urllib.parse
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from socketserver import ThreadingMixIn
+
+import requests
+import yaml
+from prometheus_client import (
+    CONTENT_TYPE_LATEST,
+    REGISTRY,
+    CollectorRegistry,
+    Counter,
+    Gauge,
+    Summary,
+    Info,
+    generate_latest,
+)
+
+__version__ = "0.1.0"
+
+i = Info("hubitat_exporter_version", "hubitat_exporter version")
+i.info({"version": __version__})
+
+INPROGRESS = Gauge(
+    "hubitat_exporter_inprogress_requests", "Number of in-progress requests",
+)
+
+API_CALLS = Counter("hubitat_exporter_api_calls_total", "Number of API calls made",)
+API_ERRORS = Counter(
+    "hubitat_exporter_api_errors_total",
+    "Number of errors returned by API calls",
+    ["collector"],
+)
+
+LATENCY = Summary(
+    "hubitat_exporter_request_latency_seconds", "Request latency in seconds",
+)
+
+
+class HubitatCollector:
+    def __init__(
+        self,
+        hubitat_uri,
+        hubitat_token,
+        collected_metrics="battery,humidity,illuminance,level,switch,temperature,power,energy,acceleration,motion,contact",
+    ):
+        self.registry = CollectorRegistry()
+        self.hubitat_uri = hubitat_uri
+        self.hubitat_token = hubitat_token
+        self.collected_metrics = collected_metrics.split(",")
+
+        self.metrics = {}
+        for m in self.collected_metrics:
+            self.metrics[m] = Gauge(
+                f"hubitat_{m}",
+                f"{m} reading from device",
+                ["device"],
+                registry=self.registry,
+            )
+
+    @LATENCY.time()
+    def collect(self, skip_list=[]):
+
+        duration = Gauge(
+            "hubitat_scrape_collector_duration_seconds",
+            "Time spent on this run to collect metrics from the Hubitat Maker API, in seconds",
+            ["collector"],
+            registry=self.registry,
+        )
+
+        start = time.time()
+        self.device_info()
+        duration.labels("device_info").set(time.time() - start)
+
+        return generate_latest(self.registry)
+
+    def sanitize(self, inputValue):
+        return re.sub("[^a-z0-9]+", "_", inputValue.lower())
+
+    def get_all_devices(self):
+        API_CALLS.inc()
+        try:
+            response = requests.get(
+                f"{self.hubitat_uri}/all?access_token={self.hubitat_token}"
+            )
+            response.raise_for_status()
+            return response.json()
+        except Exception as e:
+            print("error calling Hubitat: %s" % str(e))
+            API_ERRORS.inc()
+            raise e
+
+    def device_info(self):
+
+        devices = self.get_all_devices()
+        for device in devices:
+            for attrib in device["attributes"]:
+                if attrib in self.collected_metrics:
+                    value = self.translate_value(attrib, device["attributes"][attrib])
+                    self.metrics[attrib].labels(device["label"]).set(value)
+
+    def translate_value(self, attrib, value):
+        if value is not None:
+            if attrib == "switch":
+                if value == "on":
+                    value = 1
+                else:
+                    value = 0
+
+            elif attrib == "water":
+                if value == "dry":
+                    value = 1
+                else:
+                    value = 0
+
+            elif attrib == "power":
+                if value == "on":
+                    value = 1
+                elif value == "off":
+                    value = 0
+
+            elif attrib == "contact":
+                if value == "open":
+                    value = 1
+                elif value == "closed":
+                    value = 0
+
+            elif attrib == "acceleration" or attrib == "motion":
+                if value == "active":
+                    value = 1
+                elif value == "inactive":
+                    value = 0
+
+            else:
+                value = float(value)
+
+        return value
+
+
+class ThreadingHTTPServer(ThreadingMixIn, HTTPServer):
+    pass
+
+
+class HubitatExporterHandler(BaseHTTPRequestHandler):
+    def __init__(self, *args, **kwargs):
+        try:
+            BaseHTTPRequestHandler.__init__(self, *args, **kwargs)
+        except socket.error as e:
+            if e.args[1] == "Broken pipe":
+                print("socket error: client closed connection")
+            else:
+                print("socket error: " + str(e))
+
+    @INPROGRESS.track_inprogress()
+    def do_GET(self):
+        url = urllib.parse.urlparse(self.path)
+        if url.path == "/hubitat":
+            try:
+                hubitat = HubitatCollector(
+                    config["hubitat_url"], config["hubitat_token"]
+                )
+                output = hubitat.collect()
+
+                self.send_response(200)
+                self.send_header("Content-Type", CONTENT_TYPE_LATEST)
+                self.end_headers()
+                self.wfile.write(output)
+            except:
+                print(traceback.format_exc().encode("utf-8"))
+
+                self.send_response(500)
+                self.end_headers()
+                self.wfile.write(traceback.format_exc().encode("utf-8"))
+
+        elif url.path == "/metrics":
+            # CACHE_ENTRIES.set(CACHE.currsize)
+            # CACHE_MAXENTRIES.set(CACHE.maxsize)
+            # CACHE_TTL.set(CACHE.ttl)
+
+            output = generate_latest(REGISTRY)
+
+            self.send_response(200)
+            self.send_header("Content-Type", CONTENT_TYPE_LATEST)
+            self.end_headers()
+            self.wfile.write(output)
+
+        elif url.path == "/":
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(
+                b"""<html>
+            <head><title>Hubitat Exporter</title></head>
+            <body>
+            <h1>Hubitat Exporter</h1>
+            <p>Visit <code>/hubitat</code> to use.</p>
+            <br />
+            <p>Visit <code>/metrics</code> for metrics about this exporter.</p>
+            <br />
+
+            <br />
+
+            </body>
+            </html>"""
+            )
+        else:
+            self.send_response(404)
+            self.end_headers()
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(
+        usage=__doc__,
+        description="Prometheus Hubitat exporter",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    parser.add_argument(
+        "config_file",
+        nargs="?",
+        help="Configuration file path",
+        default="hubitat_exporter.yml",
+    )
+
+    parser.add_argument(
+        "--port",
+        help="listen port",
+        required=False,
+        action="store",
+        default=5000,
+        type=int,
+    )
+    parser.add_argument("--version", action="version", version=__version__)
+
+    args = parser.parse_args()
+
+    config_file = os.path.expanduser(str(args.config_file))
+    if not os.path.exists(config_file):
+        sys.exit("Error: config file %s does not exist" % config_file)
+
+    with open(args.config_file) as c:
+        config = yaml.safe_load(c)
+    try:
+        server = ThreadingHTTPServer(("", int(args.port)), HubitatExporterHandler)
+        print("listening on port %i...\n" % args.port)
+        server.serve_forever()
+    except KeyboardInterrupt:
+        print(" Interrupted")
+        exit(0)
+
