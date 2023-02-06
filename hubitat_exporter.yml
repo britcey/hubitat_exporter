@@ -1,0 +1,3 @@
+---
+hubitat_url: http://<ip>/apps/api/<id>/devices
+hubitat_token: <Maker API token>
