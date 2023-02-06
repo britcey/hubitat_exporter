@@ -144,9 +144,9 @@ class HubitatCollector:
 
             elif attrib == "contact":
                 if value == "open":
-                    value = 1
-                elif value == "closed":
                     value = 0
+                elif value == "closed":
+                    value = 1
 
             elif attrib == "acceleration" or attrib == "motion":
                 if value == "active":
