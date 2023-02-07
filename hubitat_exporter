@@ -16,6 +16,7 @@ URL arguments:
 
 
 import argparse
+import datetime
 import os
 import socket
 import re
@@ -65,7 +66,7 @@ class HubitatCollector:
         self,
         hubitat_uri,
         hubitat_token,
-        collected_metrics="battery,humidity,illuminance,level,switch,temperature,power,energy,acceleration,motion,contact",
+        collected_metrics="battery,humidity,illuminance,level,switch,temperature,power,energy,acceleration,motion,contact,lock",
     ):
         self.registry = CollectorRegistry()
         self.hubitat_uri = hubitat_uri
@@ -80,6 +81,13 @@ class HubitatCollector:
                 ["device"],
                 registry=self.registry,
             )
+
+        self.metrics["last_seen"] = Gauge(
+            "hubitat_device_last_reported_seconds",
+            "last time device reported to Hubitat, in seconds since the epoch",
+            ["device"],
+            registry=self.registry,
+        )
 
     @LATENCY.time()
     def collect(self, skip_list=[]):
@@ -117,10 +125,19 @@ class HubitatCollector:
 
         devices = self.get_all_devices()
         for device in devices:
+            self.metrics["last_seen"].labels(device["label"]).set(self.parse_date(device["date"]))
             for attrib in device["attributes"]:
                 if attrib in self.collected_metrics:
                     value = self.translate_value(attrib, device["attributes"][attrib])
                     self.metrics[attrib].labels(device["label"]).set(value)
+
+    def parse_date(self, date):
+        # "date": "2023-02-06T06:24:46+0000"
+        try:
+            dt = datetime.datetime.strptime(date, "%Y-%m-%dT%H:%M:%S%z")
+            return dt.astimezone().strftime('%s')
+        except TypeError:
+            return -1
 
     def translate_value(self, attrib, value):
         if value is not None:
@@ -146,6 +163,12 @@ class HubitatCollector:
                 if value == "open":
                     value = 0
                 elif value == "closed":
+                    value = 1
+
+            elif attrib == "lock":
+                if value == "unlocked":
+                    value = 0
+                elif value == "locked":
                     value = 1
 
             elif attrib == "acceleration" or attrib == "motion":
