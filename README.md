@@ -66,3 +66,18 @@ The default collections are:
   - motion
   - contact # 1 is closed, 0 is open, like a circuit
 ```
+
+# Acknowledgements
+
+This was forked from
+[hubitat2prom](https://github.com/BudgetSmartHome/hubitat2prom) and re-written
+quite a bit, to move it from using Flask to just using Python's built-in
+webserver, as well as using the prometheus_client module, to ensure valid
+metrics.
+
+This follows the standard 'proxy exporter' pattern used by blackbox_exporter,
+and the like - in Prometheus tradition, a config file contains any
+authentication info.
+
+TODO: update to support multiple Hubitat hubs - with the target provided by the
+Prometheus job, with creds specified in the config file as various modules.
