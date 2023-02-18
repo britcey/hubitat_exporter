@@ -46,10 +46,14 @@ i = Info("hubitat_exporter_version", "hubitat_exporter version")
 i.info({"version": __version__})
 
 INPROGRESS = Gauge(
-    "hubitat_exporter_inprogress_requests", "Number of in-progress requests",
+    "hubitat_exporter_inprogress_requests",
+    "Number of in-progress requests",
 )
 
-API_CALLS = Counter("hubitat_exporter_api_calls_total", "Number of API calls made",)
+API_CALLS = Counter(
+    "hubitat_exporter_api_calls_total",
+    "Number of API calls made",
+)
 API_ERRORS = Counter(
     "hubitat_exporter_api_errors_total",
     "Number of errors returned by API calls",
@@ -57,7 +61,8 @@ API_ERRORS = Counter(
 )
 
 LATENCY = Summary(
-    "hubitat_exporter_request_latency_seconds", "Request latency in seconds",
+    "hubitat_exporter_request_latency_seconds",
+    "Request latency in seconds",
 )
 
 
@@ -91,7 +96,6 @@ class HubitatCollector:
 
     @LATENCY.time()
     def collect(self, skip_list=[]):
-
         duration = Gauge(
             "hubitat_scrape_collector_duration_seconds",
             "Time spent on this run to collect metrics from the Hubitat Maker API, in seconds",
@@ -122,10 +126,11 @@ class HubitatCollector:
             raise e
 
     def device_info(self):
-
         devices = self.get_all_devices()
         for device in devices:
-            self.metrics["last_seen"].labels(device["label"]).set(self.parse_date(device["date"]))
+            self.metrics["last_seen"].labels(device["label"]).set(
+                self.parse_date(device["date"])
+            )
             for attrib in device["attributes"]:
                 if attrib in self.collected_metrics:
                     value = self.translate_value(attrib, device["attributes"][attrib])
@@ -135,7 +140,7 @@ class HubitatCollector:
         # "date": "2023-02-06T06:24:46+0000"
         try:
             dt = datetime.datetime.strptime(date, "%Y-%m-%dT%H:%M:%S%z")
-            return dt.astimezone().strftime('%s')
+            return dt.astimezone().strftime("%s")
         except TypeError:
             return -1
 
@@ -291,4 +296,3 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         print(" Interrupted")
         exit(0)
-

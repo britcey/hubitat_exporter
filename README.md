@@ -1,8 +1,7 @@
 # hubitat_exporter
 
-[Prometheus](https://prometheus.io) exporter to expose metrics from the 
+[Prometheus](https://prometheus.io) exporter to expose metrics from the
 [Hubitat Maker API](https://docs.hubitat.com/index.php?title=Maker_API)
- 
 
 # Getting up and running
 
@@ -25,6 +24,14 @@ Then just start it:
 You can test it is working by visiting
 [http://localhost:5000/metrics](http://localhost:5000/metrics) in a browser.
 
+### Docker
+
+You can also run via Docker:
+
+```
+docker run --rm -p 5000:5000 -v `pwd`/hubitat_exporter.yml:/usr/local/etc/hubitat_exporter.yml britcey/hubitat_exporter
+```
+
 ## Prometheus
 
 Configuring Prometheus to scrape the metrics is easy.
@@ -42,9 +49,9 @@ Prometheus will now scrape your web service every 30 seconds to update the metri
 
 # Collected Metrics
 
-Hubitat2Prom is capable of collecting any of the metrics that Hubitat exposes via the MakerAPI.
+hubitat_exporter is capable of collecting any of the metrics that Hubitat exposes via the MakerAPI.
 
-By default it will collect the list below, however adding a new metric is as simple as checking the output of the MakerAPI and adding the attribute name to your configuration, and then restarting the service.
+By default it will collect the list below, however adding a new metrics is straight-forward.
 
 The default collections are:
 
@@ -57,6 +64,5 @@ The default collections are:
   - temperature
   - acceleration
   - motion
-  - contact
+  - contact # 1 is closed, 0 is open, like a circuit
 ```
-
