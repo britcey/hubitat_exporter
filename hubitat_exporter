@@ -12,7 +12,7 @@ URL arguments:
 
             Visit /metrics for metrics about this exporter.
 
- """
+"""
 
 
 import argparse
@@ -40,7 +40,7 @@ from prometheus_client import (
     generate_latest,
 )
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 i = Info("hubitat_exporter_version", "hubitat_exporter version")
 i.info({"version": __version__})
@@ -116,13 +116,14 @@ class HubitatCollector:
         API_CALLS.inc()
         try:
             response = requests.get(
-                f"{self.hubitat_uri}/all?access_token={self.hubitat_token}"
+                f"{self.hubitat_uri}/all?access_token={self.hubitat_token}",
+                timeout=10,
             )
             response.raise_for_status()
             return response.json()
         except Exception as e:
             print("error calling Hubitat: %s" % str(e))
-            API_ERRORS.inc()
+            API_ERRORS.labels("device_info").inc()
             raise e
 
     def device_info(self):
@@ -140,8 +141,8 @@ class HubitatCollector:
         # "date": "2023-02-06T06:24:46+0000"
         try:
             dt = datetime.datetime.strptime(date, "%Y-%m-%dT%H:%M:%S%z")
-            return dt.astimezone().strftime("%s")
-        except TypeError:
+            return dt.timestamp()
+        except (TypeError, ValueError, OverflowError, OSError):
             return -1
 
     def translate_value(self, attrib, value):
